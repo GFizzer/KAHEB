@@ -7,7 +7,7 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.1
+@version: 1.1.1
 """
 
 AUTH_URL = "https://api.kide.app/api/authentication/user"
@@ -145,7 +145,7 @@ def read_user_file():
     """
     try:
         with open("user.txt", mode="r") as file:
-            user = file.read()
+            user = file.read().strip()
             return user
     except FileNotFoundError as err:
         print("FileNotFoundError: user.txt not found!")
