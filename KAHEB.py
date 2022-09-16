@@ -7,7 +7,7 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.1.1
+@version: 1.2.0
 """
 
 AUTH_URL = "https://api.kide.app/api/authentication/user"
@@ -16,9 +16,28 @@ POST_URL = "https://api.kide.app/api/reservations"
 REQUEST_TIMEOUT = 10  # Timeout parameter for all aiohttp requests, seconds
 
 
+# region User authentication tag and event ID validation
+
+
+def read_user_file():
+    """
+    Reads the file "user.txt" containing the Kide.app authentication string.
+    Should be located in the same folder as the executable
+
+    :return: User authentication string if succesfully read, raises a FileNotFoundError otherwise
+    """
+    try:
+        with open("user.txt", mode="r") as file:
+            user = file.read().strip()
+            return user
+    except FileNotFoundError as err:
+        raise err
+
+
 async def validate_user(session, user):
     """
     Validates user authentication string against Kide.app API
+
     :param session: ClientSession to connect through
     :param user: Kide.app user authentication string ("Bearer ...")
     :return: Response status code
@@ -35,6 +54,79 @@ async def validate_user(session, user):
         }
     res = await session.get(AUTH_URL, headers=headers, timeout=REQUEST_TIMEOUT)
     return res.status
+
+
+async def validate_eid(session, eid):
+    """
+    Validates the event ID by pinging the Kide.app API and returning the status code
+
+    :param session: ClientSession to connect through
+    :param eid: Wanted event's ID, available in the address bar
+    :return: Response status code
+    """
+    url = GET_URL + eid
+    res = await session.get(url, timeout=REQUEST_TIMEOUT)
+    return res.status
+
+
+# endregion
+
+# region Getting ticket data
+
+
+async def getrequest(session, eid, flag):
+    """
+    Makes a GET request to the product catalogue API of Kide.app and returns
+    the JSON data of the wanted event
+
+    :param session: ClientSession to connect through
+    :param eid: Wanted event's event ID, available in the address bar
+    :param flag: When the ticket inventory ID's are found, this flag is set to stop any further GET requests.
+    If none is provided, assume connection testing/validation mode and ignore it
+    :return: JSON data of the page, which includes the tickets and their data, if sales have been opened,
+    otherwise an empty list
+    """
+    url = GET_URL + eid
+    async with session.get(url, timeout=REQUEST_TIMEOUT) as res:
+        try:
+            data = await res.json()
+            tickets = data["model"]["variants"]
+        except (ContentTypeError, KeyError) as err:
+            raise err
+        if tickets:
+            flag.set()
+        return tickets
+
+
+async def loop_getrequest(session, eid, timeout, start):
+    """
+    Makes asynchronous GET requests to Kide.app API until a request returns with ticket data
+
+    :param session: ClientSession to connect through
+    :param eid: Wanted event's ID, available in the address bar
+    :param timeout: how many seconds to loop for before exiting
+    :param start: the initialization moment as time.time() of this method
+    :return: JSON data of the page, which includes the tickets and their data, if sales have been opened,
+    otherwise an empty list
+    """
+    flag = asyncio.Event()
+    while True:
+        tickets_raw = asyncio.ensure_future(getrequest(session, eid, flag))
+        await tickets_raw
+
+        if flag.is_set():  # Tickets found
+            break
+
+        time_diff = time.time() - start
+        if time_diff > timeout:
+            print("GET requests timed out, quitting...")
+            break
+    return tickets_raw.result()
+
+
+# endregion
+
+# region Reserving tickets
 
 
 async def postrequest(session, iid, qty, user):
@@ -69,120 +161,50 @@ async def postrequest(session, iid, qty, user):
     await session.post(POST_URL, headers=headers, json=data, timeout=REQUEST_TIMEOUT)
 
 
-async def loop_postrequest(session, iid, qty, user):
+async def reserve_all_tickets(session, tickets, user):
     """
-    Makes asynchronous POST requests to reserve a ticket with given inventory ID twice
+    Reserves all given tickets asynchronously using Kide.app's API
 
     :param session: ClientSession to connect through
-    :param iid: Wanted ticket's Kide.app API inventory ID
-    :param qty: Quantity of tickets to reserve
+    :param tickets: JSON data for all ticket variants, includes their inventory ID's
+    and maximumn reservable quantities
     :param user: Kide.app user authentication string ("Bearer ...")
+    :return:
     """
     posts = []
-    for i in range(2):
-        post = asyncio.ensure_future(postrequest(session, iid, qty, user))
+    for tic in tickets:
+        iid = tic["inventoryId"]
+        max_qty = tic["productVariantMaximumReservableQuantity"]
+        post = asyncio.ensure_future(postrequest(session, iid, max_qty, user))
         posts.append(post)
-
     await asyncio.gather(*posts, return_exceptions=True)
 
 
-async def getrequest(session, eid, flag=None):
-    """
-    Makes a GET request to the product catalogue API of Kide.app and returns
-    the JSON data of the wanted event
-
-    :param session: ClientSession to connect through
-    :param eid: Wanted event's event ID, available in the address bar
-    :param flag: When the ticket inventory ID's are found, this flag is set to stop any further GET requests.
-    If none is provided, assume connection testing/validation mode and ignore it
-    :return: JSON data of the page, which includes the tickets and their data, if sales have been opened,
-    otherwise an empty list
-    """
-    url = GET_URL + eid
-    async with session.get(url, timeout=REQUEST_TIMEOUT) as res:
-        try:
-            data = await res.json()
-        except ContentTypeError as err:
-            raise err
-        tickets = data["model"]["variants"]
-        if tickets:
-            if flag is not None:
-                flag.set()
-        return tickets
-
-
-async def loop_getrequest(session, eid, timeout, start):
-    """
-    Makes asynchronous GET requests to Kide.app API until a request returns with ticket data
-
-    :param session: ClientSession to connect through
-    :param eid: Wanted event's event ID, available in the address bar
-    :param timeout: how many seconds to loop for before exiting
-    :param start: the initialization moment as time.time() of this method
-    :return: JSON data of the page, which includes the tickets and their data, if sales have been opened,
-    otherwise an empty list
-    """
-    flag = asyncio.Event()
-    while True:
-        tickets_raw = asyncio.ensure_future(getrequest(session, eid, flag))
-        await tickets_raw
-
-        if flag.is_set():  # Tickets found
-            break
-
-        time_diff = time.time() - start
-        if time_diff > timeout:
-            print("GET requests timed out, quitting...")
-            break
-    return tickets_raw.result()
-
-
-def read_user_file():
-    """
-    Reads the file "user.txt" containing the Kide.app authentication string.
-    Should be located in the same folder as the executable
-    :return: User authentication string if succesfully read, raises a FileNotFoundError otherwise
-    """
-    try:
-        with open("user.txt", mode="r") as file:
-            user = file.read().strip()
-            return user
-    except FileNotFoundError as err:
-        print("FileNotFoundError: user.txt not found!")
-        raise err
-
-
-async def validate_eid(session, eid):
-    """
-    Validates the event ID by making a GET request from the Kide.app API.
-    Raises ContentTypeError if request fails (most likely due to malformed event ID/URL)
-
-    :param session: ClientSession to connect through
-    :param eid: Wanted event's event ID, available in the address bar
-    """
-    try:
-        await getrequest(session, eid)
-    except ContentTypeError as err:
-        print("ContentTypeError! Malformed URL?")
-        raise err
+# endregion
 
 
 def get_timeout():
     """
     Asks the user for how long the GET request loop should run if no tickets are found
-    before terminating the program
+    before terminating the program. Loops until a proper value is given
 
     :return: The user-input timeout, in seconds. Raises ValueError if the input format can not be parsed
     """
-    timeout_raw = input("Page refresh timeout (MM:SS): ")
-    try:
-        mm, ss = timeout_raw.split(":")
-        mm = int(mm)
-        ss = int(ss)
-    except ValueError as err:
-        print("Improper time format! Use MM:SS!")
-        raise err
-    return mm * 60 + ss
+    timeout = None
+    while timeout is None:
+        timeout_raw = input("Page refresh timeout (MM:SS): ")
+        try:
+            mm, ss = timeout_raw.split(":")
+            mm = int(mm)
+            ss = int(ss)
+
+            timeout = (60 * mm) + ss
+        except ValueError:
+            print("Improper time format! Use MM:SS!\n")
+            continue
+
+    print(f"Timeout set to {timeout} seconds succesfully")
+    return timeout
 
 
 async def main():
@@ -190,7 +212,8 @@ async def main():
     try:
         user = read_user_file()
     except FileNotFoundError:
-        input("--- Press enter to close ---")
+        print("FileNotFoundError: user.txt not found!")
+        input("\n--- Press enter to close ---\n")
         return
     print("File user.txt read succesfully")
     # endregion
@@ -202,57 +225,41 @@ async def main():
     if await validate_user(session, user) != 200:
         await session.close()
         print("User authentication failed! Check that user.txt contains the proper authentication string (Bearer ...)")
-        input("--- Press enter to close ---")
+        input("\n--- Press enter to close ---\n")
         return
     print("User authenticated succesfully")
     # endregion
 
-    eid = input("Event ID: ")
+    eid = input("Event ID: ").strip()
 
     # region Event ID validation
-    try:
-        await validate_eid(session, eid)
-    except ContentTypeError:
+    if await validate_eid(session, eid) != 200:
         await session.close()
-        input("--- Press enter to close ---")
+        print("Event not found! Malformed ID?")
+        input("\n--- Press enter to close ---\n")
         return
     print("Event ID validated succesfully")
     # endregion
 
-    # region Getting GET request timeout
-    timeout = None
-    while timeout is None:
-        try:
-            timeout = get_timeout()
-        except ValueError:
-            pass
-    print(f"Timeout set to {timeout} seconds succesfully")
-    # endregion
+    timeout = get_timeout()  # Page refreshing GET request timeout, seconds
 
-    input("~~~ PRESS ENTER TO START ~~~")
+    input("\n~~~ PRESS ENTER TO START ~~~\n")
 
     start = time.time()  # To track timeout
 
-    # region GET requests
+    # region GET ticket page data
     tickets_raw = asyncio.ensure_future(loop_getrequest(session, eid, timeout, start))
     await tickets_raw
 
     tickets = tickets_raw.result()
     # endregion
 
-    # region POST requests
-    posts = []
-    for tic in tickets:
-        iid = tic["inventoryId"]
-        max_qty = tic["productVariantMaximumReservableQuantity"]
-        post = asyncio.ensure_future(loop_postrequest(session, iid, max_qty, user))
-        posts.append(post)
-    await asyncio.gather(*posts, return_exceptions=True)
-    # endregion
+    await reserve_all_tickets(session, tickets, user)  # Reserve all found tickets via POST requests
 
     await session.close()
+    print(time.time() - start)
 
-    input("~~~ FINISHED, PRESS ENTER TO CLOSE ~~~")
+    input("\n~~~ FINISHED, PRESS ENTER TO CLOSE ~~~\n")
 
 
 if __name__ == "__main__":
