@@ -7,7 +7,7 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.2.1
+@version: 1.2.0
 """
 
 AUTH_URL = "https://api.kide.app/api/authentication/user"
@@ -109,21 +109,19 @@ async def loop_getrequest(session, eid, timeout, start):
     :return: JSON data of the page, which includes the tickets and their data, if sales have been opened,
     otherwise an empty list
     """
-    tickets_raw = []
     flag = asyncio.Event()
     while True:
-        if flag.is_set():  # Tickets found, break before starting another request
-            break
-
         tickets_raw = asyncio.ensure_future(getrequest(session, eid, flag))
+        await tickets_raw
+
+        if flag.is_set():  # Tickets found
+            break
 
         time_diff = time.time() - start
         if time_diff > timeout:
             print("GET requests timed out, quitting...")
             break
-
-    tickets = await tickets_raw.result()
-    return tickets
+    return tickets_raw.result()
 
 
 # endregion
