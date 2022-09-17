@@ -7,13 +7,15 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.2.0
+@version: 1.3.0
 """
 
 AUTH_URL = "https://api.kide.app/api/authentication/user"
 GET_URL = "https://api.kide.app/api/products/"
 POST_URL = "https://api.kide.app/api/reservations"
 REQUEST_TIMEOUT = 10  # Timeout parameter for all aiohttp requests, seconds
+GET_REQUEST_DELAY = 0.1  # How often a new GET request for ticket data should be sent, seconds.
+# NOTE! A delay too small may cause you to be flagged as an attacker (and the server probably can't keep up)
 
 
 # region User authentication tag and event ID validation
@@ -74,28 +76,31 @@ async def validate_eid(session, eid):
 # region Getting ticket data
 
 
-async def getrequest(session, eid, flag):
+async def getrequest(session, eid, result, flag):
     """
     Makes a GET request to the product catalogue API of Kide.app and returns
     the JSON data of the wanted event
 
     :param session: ClientSession to connect through
     :param eid: Wanted event's event ID, available in the address bar
+    :param result: Ticket variants' data, if found
     :param flag: When the ticket inventory ID's are found, this flag is set to stop any further GET requests.
     If none is provided, assume connection testing/validation mode and ignore it
     :return: JSON data of the page, which includes the tickets and their data, if sales have been opened,
     otherwise an empty list
     """
-    url = GET_URL + eid
+    url = f"{GET_URL}/{eid}"
     async with session.get(url, timeout=REQUEST_TIMEOUT) as res:
         try:
             data = await res.json()
             tickets = data["model"]["variants"]
-        except (ContentTypeError, KeyError) as err:
-            raise err
-        if tickets:
-            flag.set()
-        return tickets
+            if len(tickets) > 0:
+                result.append(tickets)
+                flag.set()
+        except (ContentTypeError, KeyError):
+            pass  # Passing is okay because we don't want this data anyways
+        finally:
+            return
 
 
 async def loop_getrequest(session, eid, timeout, start):
@@ -109,19 +114,23 @@ async def loop_getrequest(session, eid, timeout, start):
     :return: JSON data of the page, which includes the tickets and their data, if sales have been opened,
     otherwise an empty list
     """
+    tickets = []
+    requests = []
     flag = asyncio.Event()
-    while True:
-        tickets_raw = asyncio.ensure_future(getrequest(session, eid, flag))
-        await tickets_raw
-
-        if flag.is_set():  # Tickets found
-            break
-
+    while not flag.is_set():
         time_diff = time.time() - start
         if time_diff > timeout:
             print("GET requests timed out, quitting...")
+            tickets = [[]]  # Empty list so tickets.pop() can return something (this gets skipped over anyways later)
             break
-    return tickets_raw.result()
+
+        await asyncio.sleep(GET_REQUEST_DELAY)
+        req = asyncio.ensure_future(getrequest(session, eid, tickets, flag))
+        requests.append(req)
+
+    for req in requests:
+        req.cancel()
+    return tickets.pop()
 
 
 # endregion
@@ -247,17 +256,12 @@ async def main():
 
     start = time.time()  # To track timeout
 
-    # region GET ticket page data
-    tickets_raw = asyncio.ensure_future(loop_getrequest(session, eid, timeout, start))
-    await tickets_raw
-
-    tickets = tickets_raw.result()
-    # endregion
-
+    tickets = await loop_getrequest(session, eid, timeout, start)  # GET ticket page data
     await reserve_all_tickets(session, tickets, user)  # Reserve all found tickets via POST requests
-
     await session.close()
-    print(time.time() - start)
+
+    end = time.time()
+    print(f"Time: {end-start}")
 
     input("\n~~~ FINISHED, PRESS ENTER TO CLOSE ~~~\n")
 
