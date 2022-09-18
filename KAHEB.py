@@ -7,13 +7,13 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.3.0
+@version: 1.3.1
 """
 
 AUTH_URL = "https://api.kide.app/api/authentication/user"
 GET_URL = "https://api.kide.app/api/products/"
 POST_URL = "https://api.kide.app/api/reservations"
-REQUEST_TIMEOUT = 10  # Timeout parameter for all aiohttp requests, seconds
+REQUEST_TIMEOUT = 30  # Timeout parameter for all aiohttp requests, seconds
 GET_REQUEST_DELAY = 0.1  # How often a new GET request for ticket data should be sent, seconds.
 # NOTE! A delay too small may cause you to be flagged as an attacker (and the server probably can't keep up)
 
@@ -66,7 +66,7 @@ async def validate_eid(session, eid):
     :param eid: Wanted event's ID, available in the address bar
     :return: Response status code
     """
-    url = GET_URL + eid
+    url = f"{GET_URL}/{eid}"
     res = await session.get(url, timeout=REQUEST_TIMEOUT)
     return res.status
 
@@ -76,26 +76,24 @@ async def validate_eid(session, eid):
 # region Getting ticket data
 
 
-async def getrequest(session, eid, result, flag):
+async def getrequest(session, eid, tickets, flag):
     """
-    Makes a GET request to the product catalogue API of Kide.app and returns
-    the JSON data of the wanted event
+    Makes a GET request to the product catalogue API of Kide.app and adds
+    the JSON data of the wanted event if found into given list 'result'
 
     :param session: ClientSession to connect through
     :param eid: Wanted event's event ID, available in the address bar
-    :param result: Ticket variants' data, if found
+    :param tickets: List to add the ticket variants' data to, if found
     :param flag: When the ticket inventory ID's are found, this flag is set to stop any further GET requests.
-    If none is provided, assume connection testing/validation mode and ignore it
-    :return: JSON data of the page, which includes the tickets and their data, if sales have been opened,
-    otherwise an empty list
+    :return: Nothing. Data is instead stored into the 'result' variable (list)
     """
     url = f"{GET_URL}/{eid}"
     async with session.get(url, timeout=REQUEST_TIMEOUT) as res:
         try:
-            data = await res.json()
-            tickets = data["model"]["variants"]
-            if len(tickets) > 0:
-                result.append(tickets)
+            json = await res.json()
+            variants = json["model"]["variants"]
+            if len(variants) > 0:  # 'variants' should always contain a list, even when empty
+                tickets.append(variants)
                 flag.set()
         except (ContentTypeError, KeyError):
             pass  # Passing is okay because we don't want this data anyways
@@ -111,7 +109,7 @@ async def loop_getrequest(session, eid, timeout, start):
     :param eid: Wanted event's ID, available in the address bar
     :param timeout: how many seconds to loop for before exiting
     :param start: the initialization moment as time.time() of this method
-    :return: JSON data of the page, which includes the tickets and their data, if sales have been opened,
+    :return: JSON data of the page, which includes the tickets and their data if found,
     otherwise an empty list
     """
     tickets = []
@@ -121,7 +119,7 @@ async def loop_getrequest(session, eid, timeout, start):
         time_diff = time.time() - start
         if time_diff > timeout:
             print("GET requests timed out, quitting...")
-            tickets = [[]]  # Empty list so tickets.pop() can return something (this gets skipped over anyways later)
+            tickets.append([])  # Empty list so tickets[0] is valid (empty ticket data gets skipped over later)
             break
 
         await asyncio.sleep(GET_REQUEST_DELAY)
@@ -130,7 +128,7 @@ async def loop_getrequest(session, eid, timeout, start):
 
     for req in requests:
         req.cancel()
-    return tickets.pop()
+    return tickets[0]
 
 
 # endregion
