@@ -7,7 +7,7 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.3.1
+@version: 1.3.2
 """
 
 AUTH_URL = "https://api.kide.app/api/authentication/user"
@@ -42,7 +42,8 @@ async def validate_user(session, user):
 
     :param session: ClientSession to connect through
     :param user: Kide.app user authentication string ("Bearer ...")
-    :return: Response status code
+    :return: User's full name if found, '???' if not.
+    Raises a ValueError if the auth string can't be validated
     """
     headers = \
         {
@@ -54,8 +55,14 @@ async def validate_user(session, user):
             "TE": "trailers",
             "Authorization": user
         }
-    res = await session.get(AUTH_URL, headers=headers, timeout=REQUEST_TIMEOUT)
-    return res.status
+    async with session.get(AUTH_URL, headers=headers, timeout=REQUEST_TIMEOUT) as res:
+        if res.status != 200:
+            raise ValueError
+        try:
+            json = await res.json()
+            return json["model"]["fullName"]
+        except KeyError:
+            return "???"
 
 
 async def validate_eid(session, eid):
@@ -64,11 +71,18 @@ async def validate_eid(session, eid):
 
     :param session: ClientSession to connect through
     :param eid: Wanted event's ID, available in the address bar
-    :return: Response status code
+    :return: JSON data (dict) of the event, mainly including its name and the time sales begin at-
+    Raises a ValueError if event ID can't be validated, and KeyError if the JSON data is malformed
     """
     url = f"{GET_URL}/{eid}"
-    res = await session.get(url, timeout=REQUEST_TIMEOUT)
-    return res.status
+    async with session.get(url, timeout=REQUEST_TIMEOUT) as res:
+        if res.status != 200:
+            raise ValueError
+        try:
+            json = await res.json()
+            return json["model"]["product"]
+        except KeyError as err:
+            raise err
 
 
 # endregion
@@ -109,7 +123,7 @@ async def loop_getrequest(session, eid, timeout, start):
     :param eid: Wanted event's ID, available in the address bar
     :param timeout: how many seconds to loop for before exiting
     :param start: the initialization moment as time.time() of this method
-    :return: JSON data of the page, which includes the tickets and their data if found,
+    :return: JSON data (list) of the page, which includes the tickets and their data if found,
     otherwise an empty list
     """
     tickets = []
@@ -190,6 +204,32 @@ async def reserve_all_tickets(session, tickets, user):
 # endregion
 
 
+async def get_event_info(session):
+    """
+    Asks the user for event ID and gets the general info concerning the event (name, sales start time).
+    Loops until a proper event ID is given and data is found.
+
+    :param session: ClientSession to connect through
+    :return: JSON data (dict) for the event. Raises KeyError if the JSON data is malformed and can't be accessed
+    using preset keys
+    """
+    event_info = None
+    while event_info is None:
+        eid = input("Event ID: ").strip()
+        try:
+            event_info = await validate_eid(session, eid)
+        except ValueError:
+            print("Event not found! Malformed ID?\n")
+            continue
+        except KeyError as err:
+            print("Event data malformed, could not access product name and date. Contact the author!")
+            raise err
+
+    print("Event ID validated succesfully:")
+    print(f"    Found event '{event_info['name']}'")
+    return event_info
+
+
 def get_timeout():
     """
     Asks the user for how long the GET request loop should run if no tickets are found
@@ -229,23 +269,25 @@ async def main():
     session = ClientSession(connector=conn)
 
     # region User authentication tag validation
-    if await validate_user(session, user) != 200:
+    try:
+        user_name = await validate_user(session, user)
+    except ValueError:
         await session.close()
         print("User authentication failed! Check that user.txt contains the proper authentication string (Bearer ...)")
         input("\n--- Press enter to close ---\n")
         return
-    print("User authenticated succesfully")
+    print("User authenticated succesfully:")
+    print(f"   Found user '{user_name}'")
     # endregion
 
-    eid = input("Event ID: ").strip()
-
-    # region Event ID validation
-    if await validate_eid(session, eid) != 200:
+    # region Event ID validation and information assigning
+    try:
+        event_info = await get_event_info(session)
+    except KeyError:
         await session.close()
-        print("Event not found! Malformed ID?")
         input("\n--- Press enter to close ---\n")
         return
-    print("Event ID validated succesfully")
+    eid = event_info["id"]
     # endregion
 
     timeout = get_timeout()  # Page refreshing GET request timeout, seconds
