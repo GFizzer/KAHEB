@@ -1,5 +1,5 @@
-# KAHEB 1.3.2
-### Kide.app Async HTTP Event Bot v1.3.2
+# KAHEB 1.4.0
+### Kide.app Async HTTP Event Bot v1.4.0
 
 
 **Authentication tag:**
@@ -19,9 +19,3 @@ Insert Kide.app bearer authentication tag into user.txt and ensure it is in the 
 9. Paste to user.txt
 
 **TODO: How to get (Chrome):**
-
-
-**Prompted parameters:**
-
-- Event ID: The ID of the wanted event, found in the address bar after _kide.app/events/_
-- Page refresh timeout (MM:SS): For how long (MINUTES:SECONDS) the program will try to fetch ticket data before exiting

@@ -2,18 +2,20 @@ import asyncio
 from aiohttp import ClientSession
 from aiohttp import TCPConnector
 from aiohttp import ContentTypeError
+import datetime as dt
 import time
 
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.3.2
+@version: 1.4.0
 """
 
 AUTH_URL = "https://api.kide.app/api/authentication/user"
 GET_URL = "https://api.kide.app/api/products/"
 POST_URL = "https://api.kide.app/api/reservations"
 REQUEST_TIMEOUT = 30  # Timeout parameter for all aiohttp requests, seconds
+REFRESH_START_BUFFER = 5  # How many seconds before sales start time to begin refreshing, seconds
 GET_REQUEST_DELAY = 0.1  # How often a new GET request for ticket data should be sent, seconds.
 # NOTE! A delay too small may cause you to be flagged as an attacker (and the server probably can't keep up)
 
@@ -115,13 +117,12 @@ async def getrequest(session, eid, tickets, flag):
             return
 
 
-async def loop_getrequest(session, eid, timeout, start):
+async def loop_getrequest(session, eid, start):
     """
     Makes asynchronous GET requests to Kide.app API until a request returns with ticket data
 
     :param session: ClientSession to connect through
     :param eid: Wanted event's ID, available in the address bar
-    :param timeout: how many seconds to loop for before exiting
     :param start: the initialization moment as time.time() of this method
     :return: JSON data (list) of the page, which includes the tickets and their data if found,
     otherwise an empty list
@@ -131,7 +132,7 @@ async def loop_getrequest(session, eid, timeout, start):
     flag = asyncio.Event()
     while not flag.is_set():
         time_diff = time.time() - start
-        if time_diff > timeout:
+        if time_diff > REQUEST_TIMEOUT:
             print("GET requests timed out, quitting...")
             tickets.append([])  # Empty list so tickets[0] is valid (empty ticket data gets skipped over later)
             break
@@ -190,7 +191,6 @@ async def reserve_all_tickets(session, tickets, user):
     :param tickets: JSON data for all ticket variants, includes their inventory ID's
     and maximumn reservable quantities
     :param user: Kide.app user authentication string ("Bearer ...")
-    :return:
     """
     posts = []
     for tic in tickets:
@@ -225,33 +225,14 @@ async def get_event_info(session):
             print("Event data malformed, could not access product name and date. Contact the author!")
             raise err
 
+    sales_start_iso = event_info["dateSalesFrom"]
+    sales_start = dt.datetime.fromisoformat(sales_start_iso)
+    sales_start_str = sales_start.strftime("%d %b @ %H:%M:%S")
+
     print("Event ID validated succesfully:")
     print(f"    Found event '{event_info['name']}'")
+    print(f"    Sales begin on {sales_start_str}")
     return event_info
-
-
-def get_timeout():
-    """
-    Asks the user for how long the GET request loop should run if no tickets are found
-    before terminating the program. Loops until a proper value is given
-
-    :return: The user-input timeout, in seconds. Raises ValueError if the input format can not be parsed
-    """
-    timeout = None
-    while timeout is None:
-        timeout_raw = input("Page refresh timeout (MM:SS): ")
-        try:
-            mm, ss = timeout_raw.split(":")
-            mm = int(mm)
-            ss = int(ss)
-
-            timeout = (60 * mm) + ss
-        except ValueError:
-            print("Improper time format! Use MM:SS!\n")
-            continue
-
-    print(f"Timeout set to {timeout} seconds succesfully")
-    return timeout
 
 
 async def main():
@@ -287,23 +268,32 @@ async def main():
         await session.close()
         input("\n--- Press enter to close ---\n")
         return
+
     eid = event_info["id"]
+    sales_start_iso = event_info["dateSalesFrom"]
+
+    sales_start = dt.datetime.fromisoformat(sales_start_iso)
+    now = dt.datetime.now(tz=sales_start.tzinfo)
     # endregion
 
-    timeout = get_timeout()  # Page refreshing GET request timeout, seconds
+    input("\n~~~ Setup ready! Press enter to confirm and begin! ~~~\n")
 
-    input("\n~~~ PRESS ENTER TO START ~~~\n")
+    sleep_time = (sales_start - now).total_seconds() - REFRESH_START_BUFFER  # Seconds to sales start
+    if sleep_time > 0:
+        print(f"Waiting until {REFRESH_START_BUFFER} seconds before sales begin")
+        await asyncio.sleep(sleep_time)
 
+    print("Starting refresh process...")
     start = time.time()  # To track timeout
 
-    tickets = await loop_getrequest(session, eid, timeout, start)  # GET ticket page data
+    tickets = await loop_getrequest(session, eid, start)  # GET ticket page data
     await reserve_all_tickets(session, tickets, user)  # Reserve all found tickets via POST requests
     await session.close()
 
     end = time.time()
-    print(f"Time: {end-start}")
+    print(f"\nFinished! Time: {end-start}s.")
 
-    input("\n~~~ FINISHED, PRESS ENTER TO CLOSE ~~~\n")
+    input("~~~ Press enter to close ~~~\n")
 
 
 if __name__ == "__main__":
