@@ -15,8 +15,8 @@ AUTH_URL = "https://api.kide.app/api/authentication/user"
 GET_URL = "https://api.kide.app/api/products/"
 POST_URL = "https://api.kide.app/api/reservations"
 REQUEST_TIMEOUT = 30  # Timeout parameter for all aiohttp requests, seconds
-REFRESH_START_BUFFER = 5  # How many seconds before sales start time to begin refreshing, seconds
-GET_REQUEST_DELAY = 0.1  # How often a new GET request for ticket data should be sent, seconds.
+REFRESH_START_BUFFER = 10  # How many seconds before sales start time to begin refreshing, seconds
+GET_REQUEST_DELAY = 0.05  # How often a new GET request for ticket data should be sent, seconds.
 # NOTE! A delay too small may cause you to be flagged as an attacker (and the server probably can't keep up)
 
 
