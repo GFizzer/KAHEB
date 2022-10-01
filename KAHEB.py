@@ -35,6 +35,7 @@ def read_user_file():
             user = file.read().strip()
             return user
     except FileNotFoundError as err:
+        print("FileNotFoundError: user.txt not found!")
         raise err
 
 
@@ -59,6 +60,7 @@ async def validate_user(session, user):
         }
     async with session.get(AUTH_URL, headers=headers, timeout=REQUEST_TIMEOUT) as res:
         if res.status != 200:
+            print("User authentication failed! Check that user.txt contains the proper authentication string (Bearer ...)")
             raise ValueError
         try:
             json = await res.json()
@@ -196,8 +198,8 @@ async def reserve_all_tickets(session, tickets, user, tag=None):
     """
     posts = []
     for tic in tickets:
-        name = tic["name"]
-        if (tag is None) or (name == tag):
+        name_lower = tic["name"].lower()
+        if (tag is None) or (tag in name_lower):
             iid = tic["inventoryId"]
             max_qty = tic["productVariantMaximumReservableQuantity"]
             post = asyncio.ensure_future(postrequest(session, iid, max_qty, user))
@@ -232,14 +234,27 @@ async def get_event_info(session):
             print("Event data malformed, could not access product name and date. Contact the author!")
             raise err
 
+    event_name = event_info["name"]
     sales_start_iso = event_info["dateSalesFrom"]
     sales_start = dt.datetime.fromisoformat(sales_start_iso)
     sales_start_str = sales_start.strftime("%d %b @ %H:%M:%S")
 
     print("Event ID validated succesfully:")
-    print(f"    Found event '{event_info['name']}'")
+    print(f"    Found event '{event_name}'")
     print(f"    Sales begin on {sales_start_str}")
     return event_info
+
+
+def get_tag():
+    tag = input("Preferred ticket search tag (enter to skip): ") \
+        .strip() \
+        .lower()
+    if tag == "":
+        print("Tag not set, reserving all possible tickets")
+        return None
+    else:
+        print(f"Ticket preference tag set to '{tag}'")
+        return tag
 
 
 async def main():
@@ -247,7 +262,6 @@ async def main():
     try:
         user = read_user_file()
     except FileNotFoundError:
-        print("FileNotFoundError: user.txt not found!")
         input("\n--- Press enter to close ---\n")
         return
     print("File user.txt read succesfully")
@@ -261,7 +275,6 @@ async def main():
         user_name = await validate_user(session, user)
     except ValueError:
         await session.close()
-        print("User authentication failed! Check that user.txt contains the proper authentication string (Bearer ...)")
         input("\n--- Press enter to close ---\n")
         return
     print("User authenticated succesfully:")
@@ -283,7 +296,7 @@ async def main():
     now = dt.datetime.now(tz=sales_start.tzinfo)
     # endregion
 
-    tag = input("Preferred ticket search tag (enter to skip): ").strip()
+    tag = get_tag()  # Ticket preference tag
 
     input("\n~~~ Setup ready! Press enter to confirm and begin! ~~~\n")
 
