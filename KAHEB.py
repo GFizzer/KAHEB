@@ -183,7 +183,7 @@ async def postrequest(session, iid, qty, user):
     await session.post(POST_URL, headers=headers, json=data, timeout=REQUEST_TIMEOUT)
 
 
-async def reserve_all_tickets(session, tickets, user):
+async def reserve_all_tickets(session, tickets, user, tag=None):
     """
     Reserves all given tickets asynchronously using Kide.app's API
 
@@ -191,14 +191,21 @@ async def reserve_all_tickets(session, tickets, user):
     :param tickets: JSON data for all ticket variants, includes their inventory ID's
     and maximumn reservable quantities
     :param user: Kide.app user authentication string ("Bearer ...")
+    :param tag: Tag that could be found in the preferred ticket's name. The program
+    will prioritize this ticket if found. If none is given, reserves all tickets
     """
     posts = []
     for tic in tickets:
-        iid = tic["inventoryId"]
-        max_qty = tic["productVariantMaximumReservableQuantity"]
-        post = asyncio.ensure_future(postrequest(session, iid, max_qty, user))
-        posts.append(post)
+        name = tic["name"]
+        if (tag is None) or (name == tag):
+            iid = tic["inventoryId"]
+            max_qty = tic["productVariantMaximumReservableQuantity"]
+            post = asyncio.ensure_future(postrequest(session, iid, max_qty, user))
+            posts.append(post)
     await asyncio.gather(*posts, return_exceptions=True)
+
+    if not posts:
+        await reserve_all_tickets(session, tickets, user)
 
 
 # endregion
@@ -276,6 +283,8 @@ async def main():
     now = dt.datetime.now(tz=sales_start.tzinfo)
     # endregion
 
+    tag = input("Preferred ticket search tag (enter to skip): ").strip()
+
     input("\n~~~ Setup ready! Press enter to confirm and begin! ~~~\n")
 
     sleep_time = (sales_start - now).total_seconds() - REFRESH_START_BUFFER  # Seconds to sales start
@@ -287,7 +296,7 @@ async def main():
     start = time.time()  # To track timeout
 
     tickets = await loop_getrequest(session, eid, start)  # GET ticket page data
-    await reserve_all_tickets(session, tickets, user)  # Reserve all found tickets via POST requests
+    await reserve_all_tickets(session, tickets, user, tag)  # Reserve all found tickets via POST requests
     await session.close()
 
     end = time.time()
