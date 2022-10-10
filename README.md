@@ -1,7 +1,5 @@
-# KAHEB 1.4.3 (exp)
-### Kide.app Async HTTP Event Bot v1.4.3 (exp)
-
-Disable "Set time zone automatically" from Windows Date & Time settings.
+# KAHEB 1.4.4
+### Kide.app Async HTTP Event Bot v1.4.4
 
 **Authentication tag:**
 
