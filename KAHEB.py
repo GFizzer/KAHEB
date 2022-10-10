@@ -8,15 +8,14 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.4.0
+@version: 1.4.4
 """
 
 AUTH_URL = "https://api.kide.app/api/authentication/user"
 GET_URL = "https://api.kide.app/api/products/"
 POST_URL = "https://api.kide.app/api/reservations"
 REQUEST_TIMEOUT = 30  # Timeout parameter for all aiohttp requests, seconds
-REFRESH_START_BUFFER = 5  # How many seconds before sales start time to begin refreshing, seconds
-GET_REQUEST_DELAY = 0.1  # How often a new GET request for ticket data should be sent, seconds.
+GET_REQUEST_DELAY = 0.05  # How often a new GET request for ticket data should be sent, seconds.
 # NOTE! A delay too small may cause you to be flagged as an attacker (and the server probably can't keep up)
 
 
@@ -35,6 +34,7 @@ def read_user_file():
             user = file.read().strip()
             return user
     except FileNotFoundError as err:
+        print("FileNotFoundError: user.txt not found!")
         raise err
 
 
@@ -59,6 +59,7 @@ async def validate_user(session, user):
         }
     async with session.get(AUTH_URL, headers=headers, timeout=REQUEST_TIMEOUT) as res:
         if res.status != 200:
+            print("User authentication failed! Check that user.txt contains the proper authentication string (Bearer ...)")
             raise ValueError
         try:
             json = await res.json()
@@ -183,7 +184,7 @@ async def postrequest(session, iid, qty, user):
     await session.post(POST_URL, headers=headers, json=data, timeout=REQUEST_TIMEOUT)
 
 
-async def reserve_all_tickets(session, tickets, user):
+async def reserve_all_tickets(session, tickets, user, tag=None):
     """
     Reserves all given tickets asynchronously using Kide.app's API
 
@@ -191,14 +192,21 @@ async def reserve_all_tickets(session, tickets, user):
     :param tickets: JSON data for all ticket variants, includes their inventory ID's
     and maximumn reservable quantities
     :param user: Kide.app user authentication string ("Bearer ...")
+    :param tag: Tag that could be found in the preferred ticket's name. The program
+    will prioritize this ticket if found. If none is given, reserves all tickets
     """
     posts = []
     for tic in tickets:
-        iid = tic["inventoryId"]
-        max_qty = tic["productVariantMaximumReservableQuantity"]
-        post = asyncio.ensure_future(postrequest(session, iid, max_qty, user))
-        posts.append(post)
+        name_lower = tic["name"].lower()
+        if (tag is None) or (tag in name_lower):
+            iid = tic["inventoryId"]
+            max_qty = tic["productVariantMaximumReservableQuantity"]
+            post = asyncio.ensure_future(postrequest(session, iid, max_qty, user))
+            posts.append(post)
     await asyncio.gather(*posts, return_exceptions=True)
+
+    if not posts:
+        await reserve_all_tickets(session, tickets, user)
 
 
 # endregion
@@ -225,14 +233,27 @@ async def get_event_info(session):
             print("Event data malformed, could not access product name and date. Contact the author!")
             raise err
 
+    event_name = event_info["name"]
     sales_start_iso = event_info["dateSalesFrom"]
     sales_start = dt.datetime.fromisoformat(sales_start_iso)
     sales_start_str = sales_start.strftime("%d %b @ %H:%M:%S")
 
     print("Event ID validated succesfully:")
-    print(f"    Found event '{event_info['name']}'")
+    print(f"    Found event '{event_name}'")
     print(f"    Sales begin on {sales_start_str}")
     return event_info
+
+
+def get_tag():
+    tag = input("Preferred ticket search tag (enter to skip): ") \
+        .strip() \
+        .lower()
+    if tag == "":
+        print("Tag not set, reserving all possible tickets")
+        return None
+    else:
+        print(f"Ticket preference tag set to '{tag}'")
+        return tag
 
 
 async def main():
@@ -240,7 +261,6 @@ async def main():
     try:
         user = read_user_file()
     except FileNotFoundError:
-        print("FileNotFoundError: user.txt not found!")
         input("\n--- Press enter to close ---\n")
         return
     print("File user.txt read succesfully")
@@ -254,7 +274,6 @@ async def main():
         user_name = await validate_user(session, user)
     except ValueError:
         await session.close()
-        print("User authentication failed! Check that user.txt contains the proper authentication string (Bearer ...)")
         input("\n--- Press enter to close ---\n")
         return
     print("User authenticated succesfully:")
@@ -270,24 +289,16 @@ async def main():
         return
 
     eid = event_info["id"]
-    sales_start_iso = event_info["dateSalesFrom"]
-
-    sales_start = dt.datetime.fromisoformat(sales_start_iso)
-    now = dt.datetime.now(tz=sales_start.tzinfo)
     # endregion
 
-    input("\n~~~ Setup ready! Press enter to confirm and begin! ~~~\n")
+    tag = get_tag()  # Ticket preference tag
 
-    sleep_time = (sales_start - now).total_seconds() - REFRESH_START_BUFFER  # Seconds to sales start
-    if sleep_time > 0:
-        print(f"Waiting until {REFRESH_START_BUFFER} seconds before sales begin")
-        await asyncio.sleep(sleep_time)
-
+    input("\n~~~ Setup ready! Press enter to confirm and start! ~~~\n")
     print("Starting refresh process...")
     start = time.time()  # To track timeout
 
     tickets = await loop_getrequest(session, eid, start)  # GET ticket page data
-    await reserve_all_tickets(session, tickets, user)  # Reserve all found tickets via POST requests
+    await reserve_all_tickets(session, tickets, user, tag)  # Reserve all found tickets via POST requests
     await session.close()
 
     end = time.time()
