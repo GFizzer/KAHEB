@@ -1,9 +1,13 @@
 package fi.gfizzer.kaheb.network
 
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import io.ktor.client.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import io.ktor.http.*
 
+const val EVENT_ID_PREFIX = "https://kide.app/events/"
 const val AUTH_URL = "https://api.kide.app/api/authentication/user"
 const val GET_URL = "https://api.kide.app/api/products/"
 const val POST_URL = "https://api.kide.app/api/reservations"
@@ -27,6 +31,23 @@ class KideHandler {
             }
         }
         return response.status.value == 200
+    }
+
+    suspend fun validateEventUrl(url: String): JsonObject? {
+        val prefixIndex = url.indexOf(EVENT_ID_PREFIX)
+        if (prefixIndex == -1) {
+            return null
+        }
+
+        val eventId = url.substring(prefixIndex + EVENT_ID_PREFIX.length)
+        val response = client.get("$GET_URL/$eventId")
+        val jelement = JsonParser.parseString(response.bodyAsText())
+
+        return if (jelement is JsonObject) {
+            jelement.asJsonObject
+        } else {
+            null
+        }
     }
 
     fun closeClient() {
