@@ -7,12 +7,59 @@
     tools:context=".MainActivity">
 
     <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Hello World!"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
+        android:id="@+id/authStatusLabel"
+        android:layout_width="94dp"
+        android:layout_height="37dp"
+        android:background="#E3E3E3"
+        android:paddingStart="4sp"
+        android:paddingEnd="8sp"
+        android:text="Status: "
+        android:textAppearance="@style/TextAppearance.AppCompat.Body1"
+        android:textColor="#5116BC"
+        android:textSize="24sp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/authValidationResult"
+        android:layout_width="302dp"
+        android:layout_height="37dp"
+        android:layout_marginStart="8dp"
+        android:background="#F1F1F1"
+        android:paddingStart="4sp"
+        android:text="..."
+        android:textAlignment="textStart"
+        android:textSize="24sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toEndOf="@+id/authStatusLabel"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/updateAuthTagButton"
+        style="@style/Widget.AppCompat.Button"
+        android:layout_width="98dp"
+        android:layout_height="59dp"
+        android:layout_marginTop="2dp"
+        android:background="#6835F1"
+        android:paddingTop="0sp"
+        android:paddingBottom="0sp"
+        android:text="Send"
+        android:textSize="20sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/authValidationResult" />
+
+    <EditText
+        android:id="@+id/updateAuthTagField"
+        android:layout_width="315dp"
+        android:layout_height="67dp"
+        android:layout_marginTop="2dp"
+        android:ems="10"
+        android:hint="New authorization tag..."
+        android:inputType="none|textPersonName"
+        android:paddingStart="12sp"
+        app:layout_constraintEnd_toStartOf="@+id/updateAuthTagButton"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/authValidationResult" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
