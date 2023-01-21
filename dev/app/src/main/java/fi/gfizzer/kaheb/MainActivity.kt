@@ -64,14 +64,17 @@ class MainActivity : AppCompatActivity() {
         // Custom search tag set
         val searchTagButton = getUiElement(R.id.searchTagButton)
         searchTagButton.setOnClickListener {
-            val tag = getUiElement(R.id.searchTagField).text.toString().trim()
+            val tag = getUiElement(R.id.searchTagField).text
+                .toString()
+                .trim()
+                .lowercase()
             setSearchTag(tag)
         }
 
         // Start
         val startButton = getUiElement(R.id.startButton)
         startButton.setOnClickListener {
-            startBotting()
+            CoroutineScope(Dispatchers.Main).launch { startBotting() }
         }
 
         // Update auth when loaded from SharedPrefs
@@ -135,14 +138,12 @@ class MainActivity : AppCompatActivity() {
             val eventUrlField = getUiElement(R.id.eventUrlField) as EditText
             eventUrlField.text.clear()
 
-            val event = eventJob.await()
+            val eventInfo = eventJob.await()
 
-            eventId = event?.get("model")
-                ?.asJsonObject?.get("product")
-                ?.asJsonObject?.get("id")
+            eventId = eventInfo?.asJsonObject?.get("id")
                 ?.asString
 
-            if (event == null || eventId == null) {
+            if (eventInfo == null || eventId == null) {
                 eventCheckResult.text = "Event URL invalid!"
                 setTextDelayed(R.id.eventCheckResult, "---", 5000L)
                 return@launch
@@ -153,14 +154,10 @@ class MainActivity : AppCompatActivity() {
 
             // Cannot edit UI elements outside Main thread
             withContext(Dispatchers.Main) {
-                eventNameDisplay.text = event.get("model")
-                    ?.asJsonObject?.get("product")
-                    ?.asJsonObject?.get("name")
+                eventNameDisplay.text = eventInfo.get("name")
                     ?.asString
 
-                val salesStartIso = event.get("model")
-                    ?.asJsonObject?.get("product")
-                    ?.asJsonObject?.get("dateSalesFrom")
+                val salesStartIso = eventInfo.get("dateSalesFrom")
                     ?.asString
 
                 val salesStart = LocalDateTime
@@ -183,22 +180,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startBotting() {
-        val progresStatusInfo = getUiElement(R.id.progresStatusInfo)
-        progresStatusInfo.text = ""
+    private suspend fun startBotting() {
+        val progressStatusInfo = getUiElement(R.id.progressStatusInfo)
+        progressStatusInfo.text = ""
 
         if (!userAuthTagValid || !eventIdValid) {
-            progresStatusInfo.setTextColor(Color.RED)
-            progresStatusInfo.text = "Invalid user auth tag or event id!"
+            progressStatusInfo.setTextColor(Color.RED)
+            progressStatusInfo.text = "Invalid user auth tag or event id!"
             CoroutineScope(Dispatchers.Default).launch {
-                setTextDelayed(R.id.progresStatusInfo, "", 5000L)
+                setTextDelayed(progressStatusInfo.id, "", 5000L)
             }
             return
         }
-        progresStatusInfo.setTextColor(Color.BLACK)
-        progresStatusInfo.text = "..."
+        switchAllButtons(false)
+        progressStatusInfo.setTextColor(Color.BLACK)
+        progressStatusInfo.text = "..."
 
+        val success = kideHandler.runTicketProcess(userAuthTag!!, eventId!!, searchTag)
+        if (!success) {
+            progressStatusInfo.setTextColor(Color.RED)
+            progressStatusInfo.text = "Process timed out after 20 seconds"
+        } else {
+            progressStatusInfo.text = "Success!"
+        }
 
+        switchAllButtons(true)
+    }
+
+    private fun switchAllButtons(state: Boolean) {
+        getUiElement(R.id.updateAuthTagButton).isEnabled = state
+        getUiElement(R.id.checkEventUrlButton).isEnabled = state
+        getUiElement(R.id.searchTagButton).isEnabled = state
+        getUiElement(R.id.startButton).isEnabled = state
     }
 
     private suspend fun setTextDelayed(id: Int, text: String, delay: Long) {

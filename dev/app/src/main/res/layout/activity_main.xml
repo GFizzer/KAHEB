@@ -219,7 +219,7 @@
         app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
-        android:id="@+id/progresStatusInfo"
+        android:id="@+id/progressStatusInfo"
         android:layout_width="311dp"
         android:layout_height="47dp"
         android:layout_marginBottom="8dp"
