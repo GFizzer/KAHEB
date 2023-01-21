@@ -3,6 +3,12 @@ package fi.gfizzer.kaheb.utility
 import android.content.Context
 import android.content.SharedPreferences
 
+/*
+Kide.app Async HTTP Event Bot (KAHEB) - Android
+@author: Vertti Nuotio
+@version: 1.0.0A
+*/
+
 const val USER_DATA_PATH = "userData"
 const val AUTH_TAG_PREF = "authTag"
 

@@ -14,6 +14,12 @@ import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
+/*
+Kide.app Async HTTP Event Bot (KAHEB) - Android
+@author: Vertti Nuotio
+@version: 1.0.0A
+*/
+
 const val EVENT_ID_PREFIX = "https://kide.app/events/"
 const val AUTH_URL = "https://api.kide.app/api/authentication/user"
 const val GET_URL = "https://api.kide.app/api/products/"

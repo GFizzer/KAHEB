@@ -13,6 +13,12 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
+/*
+Kide.app Async HTTP Event Bot (KAHEB) - Android
+@author: Vertti Nuotio
+@version: 1.0.0A
+*/
+
 class MainActivity : AppCompatActivity() {
     private val kideHandler = KideHandler()
     private val sharedPrefsHandler = SharedPrefsHandler()
