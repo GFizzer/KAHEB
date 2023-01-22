@@ -3,6 +3,10 @@ package fi.gfizzer.kaheb.network
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import fi.gfizzer.kaheb.utility.getTicketInventoryId
+import fi.gfizzer.kaheb.utility.getTicketMaxReservableQty
+import fi.gfizzer.kaheb.utility.getTicketName
+import fi.gfizzer.kaheb.utility.getTicketVariants
 import io.ktor.client.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -68,13 +72,7 @@ class KideHandler {
         val response = client.get("$GET_URL/$id")
         val jelement = JsonParser.parseString(response.bodyAsText())
 
-        return if (jelement is JsonObject) {
-            jelement.asJsonObject.get("model")
-                ?.asJsonObject?.get("product")
-                ?.asJsonObject
-        } else {
-            null
-        }
+        return if (jelement is JsonObject) jelement else null
     }
 
     private suspend fun ticketsGetRequest(id: String) {
@@ -85,9 +83,7 @@ class KideHandler {
             return
         }
 
-        val variants = jelement.get("model")
-            ?.asJsonObject?.get("variants")
-            ?.asJsonArray
+        val variants = getTicketVariants(jelement)
 
         if (variants != null && variants.size() > 0) {
             tickets.set(variants)
@@ -95,7 +91,7 @@ class KideHandler {
         }
     }
 
-    private suspend fun getTicketVariants(id: String) = coroutineScope {
+    private suspend fun getEventTicketVariants(id: String) = coroutineScope {
         val jobs = mutableListOf<Job>()
         val start = System.currentTimeMillis()
 
@@ -130,21 +126,20 @@ class KideHandler {
             val jobs = mutableListOf<Job>()
 
             for (t in tickets.get().asJsonArray) {
-                val tic = t.asJsonObject
-                val name = tic?.get("name")
-                    ?.asString
+                val tic = t.asJsonObject ?: continue
+                val name = getTicketName(tic)
                     ?.lowercase()
 
-                if (searchTag == null || name!!.contains(searchTag)) {
-                    val iid = tic?.get("inventoryId")?.asString
-                    val maxQty = tic?.get("productVariantMaximumReservableQuantity")?.asInt
+                if ((searchTag == null) || name!!.contains(searchTag)) {
+                    val iid = getTicketInventoryId(tic)
+                    val maxQty = getTicketMaxReservableQty(tic)
                     val job = launch { ticketPostRequest(authTag, iid!!, maxQty!!) }
                     jobs.add(job)
                 }
             }
 
             jobs.joinAll()
-            if (searchTag != null && jobs.isEmpty()) {
+            if (searchTag != null) {
                 reserveAllTickets(authTag, null)
             } else {
                 ticketsReserved = true
@@ -154,7 +149,7 @@ class KideHandler {
 
     suspend fun runTicketProcess(authTag: String, id: String, searchTag: String?): Boolean {
         val job = CoroutineScope(Dispatchers.IO).launch {
-            getTicketVariants(id)
+            getEventTicketVariants(id)
 
             if (!ticketsAvailable.get()) {
                 return@launch

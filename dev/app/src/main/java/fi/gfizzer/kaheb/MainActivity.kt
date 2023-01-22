@@ -8,6 +8,9 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import fi.gfizzer.kaheb.network.KideHandler
 import fi.gfizzer.kaheb.utility.SharedPrefsHandler
+import fi.gfizzer.kaheb.utility.getEventId
+import fi.gfizzer.kaheb.utility.getEventName
+import fi.gfizzer.kaheb.utility.getEventSalesStartString
 import kotlinx.coroutines.*
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -146,31 +149,20 @@ class MainActivity : AppCompatActivity() {
 
             val eventInfo = eventJob.await()
 
-            eventId = eventInfo?.asJsonObject?.get("id")
-                ?.asString
-
-            if (eventInfo == null || eventId == null) {
+            if (eventInfo == null) {
                 eventCheckResult.text = "Event URL invalid!"
                 setTextDelayed(R.id.eventCheckResult, "---", 5000L)
                 return@launch
             } else {
                 eventCheckResult.text = "Event found!"
+                eventId = getEventId(eventInfo)
                 eventIdValid = true
             }
 
             // Cannot edit UI elements outside Main thread
             withContext(Dispatchers.Main) {
-                eventNameDisplay.text = eventInfo.get("name")
-                    ?.asString
-
-                val salesStartIso = eventInfo.get("dateSalesFrom")
-                    ?.asString
-
-                val salesStart = LocalDateTime
-                    .parse(salesStartIso, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-                salesStartDisplay.text = salesStart
-                    .format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM))
-                    .toString()
+                eventNameDisplay.text = getEventName(eventInfo)
+                salesStartDisplay.text = getEventSalesStartString(eventInfo)
             }
         }
     }
@@ -180,6 +172,9 @@ class MainActivity : AppCompatActivity() {
         if (tag == "") {
             searchTag = null
             searchTagInfo.text = "Tag deleted"
+            CoroutineScope(Dispatchers.Default).launch {
+                setTextDelayed(R.id.searchTagInfo, "", 5000L)
+            }
         } else {
             searchTag = tag
             searchTagInfo.text = "Tag set"
@@ -206,6 +201,7 @@ class MainActivity : AppCompatActivity() {
         if (!success) {
             progressStatusInfo.setTextColor(Color.RED)
             progressStatusInfo.text = "Process timed out after 20 seconds"
+            setTextDelayed(R.id.progressStatusInfo, "", 5000L)
         } else {
             progressStatusInfo.text = "Success!"
         }
