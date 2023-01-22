@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference
 /*
 Kide.app Async HTTP Event Bot (KAHEB) - Android
 @author: Vertti Nuotio
-@version: 1.0.0A
+@version: 1.1.0A
 */
 
 const val EVENT_ID_PREFIX = "https://kide.app/events/"

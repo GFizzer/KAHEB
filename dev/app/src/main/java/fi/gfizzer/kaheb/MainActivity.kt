@@ -7,20 +7,18 @@ import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import fi.gfizzer.kaheb.network.KideHandler
-import fi.gfizzer.kaheb.utility.SharedPrefsHandler
-import fi.gfizzer.kaheb.utility.getEventId
-import fi.gfizzer.kaheb.utility.getEventName
-import fi.gfizzer.kaheb.utility.getEventSalesStartString
+import fi.gfizzer.kaheb.utility.*
 import kotlinx.coroutines.*
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 
 /*
 Kide.app Async HTTP Event Bot (KAHEB) - Android
 @author: Vertti Nuotio
-@version: 1.0.0A
+@version: 1.1.0A
 */
+
+const val START_BUFFER = 2000L
 
 class MainActivity : AppCompatActivity() {
     private val kideHandler = KideHandler()
@@ -29,6 +27,7 @@ class MainActivity : AppCompatActivity() {
     private var userAuthTag: String? = null
     private var eventId: String? = null
     private var searchTag: String? = null
+    private var salesStart: ZonedDateTime? = null
 
     private var userAuthTagValid = false
     private var eventIdValid = false
@@ -155,6 +154,7 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             } else {
                 eventCheckResult.text = "Event found!"
+                salesStart = getEventSalesStart(eventInfo)
                 eventId = getEventId(eventInfo)
                 eventIdValid = true
             }
@@ -195,12 +195,17 @@ class MainActivity : AppCompatActivity() {
         }
         switchAllButtons(false)
         progressStatusInfo.setTextColor(Color.BLACK)
-        progressStatusInfo.text = "..."
+        progressStatusInfo.text = "Waiting until sales begin..."
+
+        val startDelay = getStartDelay()
+        delay(startDelay)
+
+        progressStatusInfo.text = "Processing..."
 
         val success = kideHandler.runTicketProcess(userAuthTag!!, eventId!!, searchTag)
         if (!success) {
             progressStatusInfo.setTextColor(Color.RED)
-            progressStatusInfo.text = "Process timed out after 20 seconds"
+            progressStatusInfo.text = "Process timed out or reached error"
             setTextDelayed(R.id.progressStatusInfo, "", 5000L)
         } else {
             progressStatusInfo.text = "Success!"
@@ -219,5 +224,12 @@ class MainActivity : AppCompatActivity() {
     private suspend fun setTextDelayed(id: Int, text: String, delay: Long) {
         delay(delay)
         getUiElement(id).text = text
+    }
+
+    private fun getStartDelay(): Long {
+        val now = ZonedDateTime.now(salesStart?.zone)
+        val diff = ChronoUnit.MILLIS.between(now, salesStart)
+
+        return maxOf(0, diff - START_BUFFER)
     }
 }

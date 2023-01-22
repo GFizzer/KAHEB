@@ -2,9 +2,15 @@ package fi.gfizzer.kaheb.utility
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
-import java.time.LocalDateTime
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+
+/*
+Kide.app Async HTTP Event Bot (KAHEB) - Android
+@author: Vertti Nuotio
+@version: 1.1.0A
+*/
 
 // Event data
 fun getEventName(event: JsonObject): String? {
@@ -13,12 +19,12 @@ fun getEventName(event: JsonObject): String? {
         ?.asString
 }
 
-fun getEventSalesStart(event: JsonObject): LocalDateTime? {
+fun getEventSalesStart(event: JsonObject): ZonedDateTime? {
     val salesStartString = getEventProduct(event)
         ?.get("dateSalesFrom")
         ?.asString
 
-    return LocalDateTime.parse(salesStartString, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+    return ZonedDateTime.parse(salesStartString, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 }
 
 fun getEventSalesStartString(event: JsonObject): String? {
