@@ -28,7 +28,7 @@ const val EVENT_ID_PREFIX = "https://kide.app/events/"
 const val AUTH_URL = "https://api.kide.app/api/authentication/user"
 const val GET_URL = "https://api.kide.app/api/products/"
 const val POST_URL = "https://api.kide.app/api/reservations"
-const val REQUEST_TIMEOUT = 20000L
+const val REQUEST_TIMEOUT = 90000L
 const val GET_REQUEST_DELAY = 50L // How often a new GET request for ticket data should be sent, seconds.
 // NOTE! A delay too small may cause you to be flagged as an attacker (and the server probably can't keep up)
 
