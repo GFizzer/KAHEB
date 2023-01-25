@@ -206,7 +206,9 @@ class MainActivity : AppCompatActivity() {
         if (!success) {
             progressStatusInfo.setTextColor(Color.RED)
             progressStatusInfo.text = "Process timed out or reached error"
-            setTextDelayed(R.id.progressStatusInfo, "", 5000L)
+            CoroutineScope(Dispatchers.Default).launch {
+                setTextDelayed(R.id.progressStatusInfo, "", 5000L)
+            }
         } else {
             progressStatusInfo.text = "Success!"
         }

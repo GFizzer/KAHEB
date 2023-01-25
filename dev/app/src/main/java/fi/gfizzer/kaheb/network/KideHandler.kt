@@ -35,7 +35,7 @@ const val GET_REQUEST_DELAY = 20L // How often a new GET request for ticket data
 class KideHandler {
     private val tickets = AtomicReference<JsonArray>(null)
     private val ticketsAvailable = AtomicBoolean(false)
-    private var ticketsReserved = false
+    private var ticketsReserved = AtomicBoolean(false)
 
     private val client = HttpClient {
         install(ContentNegotiation) {
@@ -105,7 +105,7 @@ class KideHandler {
     }
 
     private suspend fun ticketPostRequest(authTag: String, iid: String, qty: Int) {
-        client.post(POST_URL) {
+        val response = client.post(POST_URL) {
             headers {
                 append(HttpHeaders.Accept, "*/*")
                 append(HttpHeaders.AcceptLanguage, "*")
@@ -118,6 +118,10 @@ class KideHandler {
             setBody(JsonParser.parseString(
                 "{'toCreate':[{'inventoryId': $iid, 'quantity': $qty}]}")
                 .asJsonObject)
+        }
+
+        if (response.status.value == 200) {
+            ticketsReserved.set(true)
         }
     }
 
@@ -141,8 +145,6 @@ class KideHandler {
             jobs.joinAll()
             if (searchTag != null) {
                 reserveAllTickets(authTag, null)
-            } else {
-                ticketsReserved = true
             }
         }
     }
@@ -159,7 +161,7 @@ class KideHandler {
         }
 
         job.join()
-        val success = ticketsReserved
+        val success = ticketsReserved.get()
         resetClient()
 
         return success
@@ -168,7 +170,7 @@ class KideHandler {
     private fun resetClient() {
         tickets.set(null)
         ticketsAvailable.set(false)
-        ticketsReserved = false
+        ticketsReserved.set(false)
     }
 
     fun closeClient() {
