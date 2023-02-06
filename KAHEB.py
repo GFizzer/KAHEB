@@ -205,8 +205,8 @@ async def reserve_all_tickets(session, tickets, user, tag=None):
             posts.append(post)
     await asyncio.gather(*posts, return_exceptions=True)
 
-    if not posts:
-        await reserve_all_tickets(session, tickets, user)
+    if tag is not None:
+        await reserve_all_tickets(session, tickets, user, None)
 
 
 # endregion
