@@ -17,4 +17,12 @@ Insert Kide.app bearer authentication tag into user.txt and ensure it is in the 
 8. Copy the entire value field of that header, including "Bearer"
 9. Paste to user.txt
 
-**TODO: How to get (Chrome):**
+**How to get (Chrome):**
+
+1. Log in to https://kide.app/ on Chrome
+2. Open the developer console (F12)
+3. Select Network tab
+4. Reload the page, on the left you will see a list of requests
+5. Search for the one called "user" scroll down until you see "Request Headers" find authorization:
+6. Copy the entire value field of that header, including "Bearer"
+7. Paste to user.txt
