@@ -8,7 +8,7 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.4.4
+@version: 1.4.5
 """
 
 AUTH_URL = "https://api.kide.app/api/authentication/user"
@@ -184,7 +184,7 @@ async def postrequest(session, iid, qty, user):
     await session.post(POST_URL, headers=headers, json=data, timeout=REQUEST_TIMEOUT)
 
 
-async def reserve_all_tickets(session, tickets, user, tag=None):
+async def reserve_all_tickets(session, tickets, user, tag, buy_max_qty=False):
     """
     Reserves all given tickets asynchronously using Kide.app's API
 
@@ -194,19 +194,23 @@ async def reserve_all_tickets(session, tickets, user, tag=None):
     :param user: Kide.app user authentication string ("Bearer ...")
     :param tag: Tag that could be found in the preferred ticket's name. The program
     will prioritize this ticket if found. If none is given, reserves all tickets
+    :param buy_max_qty: Whether or not to buy the maximum quantity of all ticket types,
+    not taken into account when tag is set
     """
     posts = []
     for tic in tickets:
         name_lower = tic["name"].lower()
         if (tag is None) or (tag in name_lower):
             iid = tic["inventoryId"]
-            max_qty = tic["productVariantMaximumReservableQuantity"]
-            post = asyncio.ensure_future(postrequest(session, iid, max_qty, user))
+            qty = tic["productVariantMaximumReservableQuantity"] if tag is not None or buy_max_qty else 1
+            post = asyncio.ensure_future(postrequest(session, iid, qty, user))
             posts.append(post)
     await asyncio.gather(*posts, return_exceptions=True)
 
     if tag is not None:
-        await reserve_all_tickets(session, tickets, user, None)
+        await reserve_all_tickets(session, tickets, user, None, False)
+    elif not buy_max_qty:
+        await reserve_all_tickets(session, tickets, user, None, True)
 
 
 # endregion
