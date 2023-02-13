@@ -6,12 +6,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
-/*
-Kide.app Async HTTP Event Bot (KAHEB) - Android
-@author: Vertti Nuotio
-@version: 1.1.0A
-*/
-
 // Event data
 fun getEventName(event: JsonObject): String? {
     return getEventProduct(event)

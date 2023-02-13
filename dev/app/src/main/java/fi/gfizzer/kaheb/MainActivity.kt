@@ -15,7 +15,7 @@ import java.time.temporal.ChronoUnit
 /*
 Kide.app Async HTTP Event Bot (KAHEB) - Android
 @author: Vertti Nuotio
-@version: 1.1.0A
+@version: 1.2.0A
 */
 
 const val START_BUFFER = 2000L

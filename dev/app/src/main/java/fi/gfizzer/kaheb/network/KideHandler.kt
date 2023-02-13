@@ -18,18 +18,12 @@ import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-/*
-Kide.app Async HTTP Event Bot (KAHEB) - Android
-@author: Vertti Nuotio
-@version: 1.1.0A
-*/
-
 const val EVENT_ID_PREFIX = "https://kide.app/events/"
 const val AUTH_URL = "https://api.kide.app/api/authentication/user"
 const val GET_URL = "https://api.kide.app/api/products/"
 const val POST_URL = "https://api.kide.app/api/reservations"
 const val REQUEST_TIMEOUT = 90000L
-const val GET_REQUEST_DELAY = 20L // How often a new GET request for ticket data should be sent, seconds.
+const val GET_REQUEST_DELAY = 50L // How often a new GET request for ticket data should be sent, milliseconds.
 // NOTE! A delay too small may cause you to be flagged as an attacker (and the server probably can't keep up)
 
 class KideHandler {
@@ -125,7 +119,7 @@ class KideHandler {
         }
     }
 
-    private suspend fun reserveAllTickets(authTag: String, searchTag: String?) {
+    private suspend fun reserveAllTickets(authTag: String, searchTag: String?, buyAllTickets: Boolean=false) {
         coroutineScope {
             val jobs = mutableListOf<Job>()
 
@@ -136,8 +130,9 @@ class KideHandler {
 
                 if ((searchTag == null) || name!!.contains(searchTag)) {
                     val iid = getTicketInventoryId(tic)
-                    val maxQty = getTicketMaxReservableQty(tic)
-                    val job = launch { ticketPostRequest(authTag, iid!!, maxQty!!) }
+                    val qty = if (searchTag != null || buyAllTickets) getTicketMaxReservableQty(tic)
+                        else 1
+                    val job = launch { ticketPostRequest(authTag, iid!!, qty!!) }
                     jobs.add(job)
                 }
             }
@@ -145,6 +140,9 @@ class KideHandler {
             jobs.joinAll()
             if (searchTag != null) {
                 reserveAllTickets(authTag, null)
+            }
+            else if (!buyAllTickets) {
+                reserveAllTickets(authTag, null, true)
             }
         }
     }
