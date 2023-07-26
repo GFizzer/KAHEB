@@ -11,7 +11,8 @@ Kide.app Async HTTP Event Bot (KAHEB)
 @version: 1.4.5
 """
 
-AUTH_URL = "https://api.kide.app/api/authentication/user"
+#AUTH_URL = "https://api.kide.app/api/authentication/user"
+AUTH_URL = "https://auth.kide.app/oauth2/token"
 GET_URL = "https://api.kide.app/api/products/"
 POST_URL = "https://api.kide.app/api/reservations"
 REQUEST_TIMEOUT = 30  # Timeout parameter for all aiohttp requests, seconds
@@ -31,7 +32,11 @@ def read_user_file():
     """
     try:
         with open("user.txt", mode="r") as file:
-            user = file.read().strip()
+            user = {}
+            for line in file:
+                key, val = line.strip().split(':')
+                user[key] = val
+            #user = file.read().strip()
             return user
     except FileNotFoundError as err:
         print("FileNotFoundError: user.txt not found!")
@@ -53,20 +58,33 @@ async def validate_user(session, user):
             "Accept-Language": "*",
             "Accept-Encoding": "gzip",
             "Content-Type": "application/json;charset=utf-8",
+            "TE": "trailers",
+            "Host": "auth.kide.app"
+        }
+
+    data = f"client_id={user['client_id']}&grant_type=password&password={user['password']}&rememberMe=true&username={user['email']}"
+
+    '''headers = \
+        {
+            "Accept": "*/*",
+            "Accept-Language": "*",
+            "Accept-Encoding": "gzip",
+            "Content-Type": "application/json;charset=utf-8",
             "Connection": "keep-alive",
             "TE": "trailers",
             "Authorization": user
-        }
-    async with session.get(AUTH_URL, headers=headers, timeout=REQUEST_TIMEOUT) as res:
+        }'''
+    async with session.get(AUTH_URL, data=data, headers=headers, timeout=REQUEST_TIMEOUT) as res:
         if res.status != 200:
-            print("User authentication failed! Check that user.txt contains the proper authentication string (Bearer ...)")
+            print("User authentication failed!")
             raise ValueError
         try:
             json = await res.json()
-            return json["model"]["fullName"]
+            print(json)
+            access_token = json['access_token']
+            return f"Bearer {access_token}".strip()
         except KeyError:
-            return "???"
-
+            raise ValueError
 
 async def validate_eid(session, eid):
     """
@@ -275,13 +293,14 @@ async def main():
 
     # region User authentication tag validation
     try:
-        user_name = await validate_user(session, user)
+        bearer_token = await validate_user(session, user)
+        #user_name = await validate_user(session, user)
     except ValueError:
         await session.close()
         input("\n--- Press enter to close ---\n")
         return
     print("User authenticated succesfully:")
-    print(f"   Found user '{user_name}'")
+    #print(f"   Found user '{user_name}'")
     # endregion
 
     # region Event ID validation and information assigning
