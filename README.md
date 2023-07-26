@@ -1,5 +1,5 @@
-# KAHEB 1.4.5
-### Kide.app Async HTTP Event Bot v1.4.5
+# KAHEB 1.4.6
+### Kide.app Async HTTP Event Bot v1.4.6
 
 **Authentication tag:**
 

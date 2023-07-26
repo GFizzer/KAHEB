@@ -8,16 +8,16 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.4.7
+@version: 1.4.6
 """
 
-AUTH_URL = "https://auth.kide.app/oauth2/token"
+OAUTH_URL = "https://auth.kide.app/oauth2/token"
+AUTH_URL = "https://api.kide.app/api/authentication/user"
 GET_URL = "https://api.kide.app/api/products/"
 POST_URL = "https://api.kide.app/api/reservations"
 REQUEST_TIMEOUT = 30  # Timeout parameter for all aiohttp requests, seconds
 GET_REQUEST_DELAY = 0.05  # How often a new GET request for ticket data should be sent, seconds.
 # NOTE! A delay too small may cause you to be flagged as an attacker (and the server probably can't keep up)
-
 
 # region User authentication tag and event ID validation
 
@@ -52,15 +52,9 @@ async def validate_user(session, user):
     :return: Authentication tag (bearer token) if successfully validated
     :raises ValueError if user info can't be validated or auth. token wasn't received
     """
-    headers = \
-        {
-            "Accept": "*/*",
-            "Accept-Language": "*",
-            "Accept-Encoding": "gzip",
-            "Content-Type": "application/json;charset=utf-8",
-            "TE": "trailers",
-            "Host": "auth.kide.app"
-        }
+    headers = {
+        'Host': "auth.kide.app"
+    }
 
     client_id = user['client_id']
     password = user['password']
@@ -69,16 +63,37 @@ async def validate_user(session, user):
     # Payload with login info
     data = f"client_id={client_id}&grant_type=password&password={password}&rememberMe=true&username={username}"
 
-    async with session.get(AUTH_URL, data=data, headers=headers, timeout=REQUEST_TIMEOUT) as res:
+    async with session.get(OAUTH_URL, data=data, headers=headers, timeout=REQUEST_TIMEOUT) as res:
         if res.status != 200:
             print("User authentication failed!")
             raise ValueError
         try:
             json = await res.json()
+            token_type = json['token_type']
             access_token = json['access_token']
-            return f"Bearer {access_token}".strip()
+            return f"{token_type} {access_token}".strip()
         except KeyError:
             raise ValueError
+
+
+async def get_user_info(session, token):
+    """
+    Gets information from the validated user, returning their name.
+    Used to reassure the user that logging in was successful
+
+    :param session: ClientSession to connect through
+    :param token: Kide.app user authentication string ("Bearer ...")
+    :return: the users name if successfully validate
+    """
+    headers = {
+        'Authorization': token,
+        'Host': "api.kide.app"
+    }
+
+    async with session.get(AUTH_URL, headers=headers, timeout=REQUEST_TIMEOUT) as res:
+        json = await res.json()
+        name = json['model']['fullName']
+        return name
 
 
 async def validate_eid(session, eid):
@@ -96,7 +111,7 @@ async def validate_eid(session, eid):
             raise ValueError
         try:
             json = await res.json()
-            return json["model"]["product"]
+            return json['model']['product']
         except KeyError as err:
             raise err
 
@@ -121,7 +136,7 @@ async def getrequest(session, eid, tickets, flag):
     async with session.get(url, timeout=REQUEST_TIMEOUT) as res:
         try:
             json = await res.json()
-            variants = json["model"]["variants"]
+            variants = json['model']['variants']
             if len(variants) > 0:  # 'variants' should always contain a list, even when empty
                 tickets.append(variants)
                 flag.set()
@@ -165,7 +180,7 @@ async def loop_getrequest(session, eid, start):
 # region Reserving tickets
 
 
-async def postrequest(session, iid, qty, user):
+async def postrequest(session, iid, qty, token):
     """
     Makes a POST request to the ticket reservation API using Kide.app's
     inventory ID for the ticket
@@ -173,18 +188,13 @@ async def postrequest(session, iid, qty, user):
     :param session: ClientSession to connect through
     :param iid: Wanted ticket's Kide.app API inventory ID
     :param qty: Quantity of tickets to reserve
-    :param user: Kide.app user authentication string ("Bearer ...")
+    :param token: Kide.app user authentication string ("Bearer ...")
     """
-    headers = \
-        {
-            "Accept": "*/*",
-            "Accept-Language": "*",
-            "Accept-Encoding": "gzip",
-            "Content-Type": "application/json;charset=utf-8",
-            "Connection": "keep-alive",
-            "TE": "trailers",
-            "Authorization": user
-        }
+    headers = {
+        'Connection': "keep-alive",
+        'Authorization': token
+    }
+
     data = \
         {
             "toCreate":
@@ -197,14 +207,14 @@ async def postrequest(session, iid, qty, user):
     await session.post(POST_URL, headers=headers, json=data, timeout=REQUEST_TIMEOUT)
 
 
-async def reserve_all_tickets(session, tickets, user, tag, buy_max_qty=False):
+async def reserve_all_tickets(session, tickets, token, tag, buy_max_qty=False):
     """
     Reserves all given tickets asynchronously using Kide.app's API
 
     :param session: ClientSession to connect through
     :param tickets: JSON data for all ticket variants, includes their inventory ID's
     and maximumn reservable quantities
-    :param user: Kide.app user authentication string ("Bearer ...")
+    :param token: Kide.app user authentication string ("Bearer ...")
     :param tag: Tag that could be found in the preferred ticket's name. The program
     will prioritize this ticket if found. If none is given, reserves all tickets
     :param buy_max_qty: Whether or not to buy the maximum quantity of all ticket types,
@@ -212,18 +222,18 @@ async def reserve_all_tickets(session, tickets, user, tag, buy_max_qty=False):
     """
     posts = []
     for tic in tickets:
-        name_lower = tic["name"].lower()
+        name_lower = tic['name'].lower()
         if (tag is None) or (tag in name_lower):
-            iid = tic["inventoryId"]
-            qty = tic["productVariantMaximumReservableQuantity"] if tag is not None or buy_max_qty else 1
-            post = asyncio.ensure_future(postrequest(session, iid, qty, user))
+            iid = tic['inventoryId']
+            qty = tic['productVariantMaximumReservableQuantity'] if tag is not None or buy_max_qty else 1
+            post = asyncio.ensure_future(postrequest(session, iid, qty, token))
             posts.append(post)
     await asyncio.gather(*posts, return_exceptions=True)
 
     if tag is not None:
-        await reserve_all_tickets(session, tickets, user, None, False)
+        await reserve_all_tickets(session, tickets, token, None, False)
     elif not buy_max_qty:
-        await reserve_all_tickets(session, tickets, user, None, True)
+        await reserve_all_tickets(session, tickets, token, None, True)
 
 
 # endregion
@@ -250,8 +260,8 @@ async def get_event_info(session):
             print("Event data malformed, could not access product name and date. Contact the author!")
             raise err
 
-    event_name = event_info["name"]
-    sales_start_iso = event_info["dateSalesFrom"]
+    event_name = event_info['name']
+    sales_start_iso = event_info['dateSalesFrom']
     sales_start = dt.datetime.fromisoformat(sales_start_iso)
     sales_start_str = sales_start.strftime("%d %b @ %H:%M:%S")
 
@@ -288,14 +298,14 @@ async def main():
 
     # region User authentication tag validation
     try:
-        bearer_token = await validate_user(session, user)
-        #user_name = await validate_user(session, user)
+        token = await validate_user(session, user)
+        user_name = await get_user_info(session, token)
     except ValueError:
         await session.close()
         input("\n--- Press enter to close ---\n")
         return
-    print("User authenticated succesfully:")
-    #print(f"   Found user '{user_name}'")
+
+    print(f"User authenticated succesfully: {user_name}")
     # endregion
 
     # region Event ID validation and information assigning
@@ -316,7 +326,7 @@ async def main():
     start = time.time()  # To track timeout
 
     tickets = await loop_getrequest(session, eid, start)  # GET ticket page data
-    await reserve_all_tickets(session, tickets, user, tag)  # Reserve all found tickets via POST requests
+    await reserve_all_tickets(session, tickets, token, tag)  # Reserve all found tickets via POST requests
     await session.close()
 
     end = time.time()
