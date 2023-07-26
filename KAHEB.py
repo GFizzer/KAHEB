@@ -8,10 +8,9 @@ import time
 """
 Kide.app Async HTTP Event Bot (KAHEB)
 @author: Vertti Nuotio
-@version: 1.4.5
+@version: 1.4.7
 """
 
-#AUTH_URL = "https://api.kide.app/api/authentication/user"
 AUTH_URL = "https://auth.kide.app/oauth2/token"
 GET_URL = "https://api.kide.app/api/products/"
 POST_URL = "https://api.kide.app/api/reservations"
@@ -25,10 +24,12 @@ GET_REQUEST_DELAY = 0.05  # How often a new GET request for ticket data should b
 
 def read_user_file():
     """
-    Reads the file "user.txt" containing the Kide.app authentication string.
+    Reads the file "user.txt" containing the Kide.app client id (client_id),
+    password (password) and username (email).
     Should be located in the same folder as the executable
 
-    :return: User authentication string if succesfully read, raises a FileNotFoundError otherwise
+    :return: Dict containing client id, password and email if succesfully read,
+    raises a FileNotFoundError if file can't be read
     """
     try:
         with open("user.txt", mode="r") as file:
@@ -36,7 +37,6 @@ def read_user_file():
             for line in file:
                 key, val = line.strip().split(':')
                 user[key] = val
-            #user = file.read().strip()
             return user
     except FileNotFoundError as err:
         print("FileNotFoundError: user.txt not found!")
@@ -45,12 +45,12 @@ def read_user_file():
 
 async def validate_user(session, user):
     """
-    Validates user authentication string against Kide.app API
+    Sends a login request to Kide.app, obtaining a valid authentication token
 
     :param session: ClientSession to connect through
-    :param user: Kide.app user authentication string ("Bearer ...")
-    :return: User's full name if found, '???' if not.
-    Raises a ValueError if the auth string can't be validated
+    :param user: dict with Kide.app user authentication data (client id, password, email)
+    :return: Authentication tag (bearer token) if successfully validated
+    :raises ValueError if user info can't be validated or auth. token wasn't received
     """
     headers = \
         {
@@ -62,29 +62,24 @@ async def validate_user(session, user):
             "Host": "auth.kide.app"
         }
 
-    data = f"client_id={user['client_id']}&grant_type=password&password={user['password']}&rememberMe=true&username={user['email']}"
+    client_id = user['client_id']
+    password = user['password']
+    username = user['email']
 
-    '''headers = \
-        {
-            "Accept": "*/*",
-            "Accept-Language": "*",
-            "Accept-Encoding": "gzip",
-            "Content-Type": "application/json;charset=utf-8",
-            "Connection": "keep-alive",
-            "TE": "trailers",
-            "Authorization": user
-        }'''
+    # Payload with login info
+    data = f"client_id={client_id}&grant_type=password&password={password}&rememberMe=true&username={username}"
+
     async with session.get(AUTH_URL, data=data, headers=headers, timeout=REQUEST_TIMEOUT) as res:
         if res.status != 200:
             print("User authentication failed!")
             raise ValueError
         try:
             json = await res.json()
-            print(json)
             access_token = json['access_token']
             return f"Bearer {access_token}".strip()
         except KeyError:
             raise ValueError
+
 
 async def validate_eid(session, eid):
     """
